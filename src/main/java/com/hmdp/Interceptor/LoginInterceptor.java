@@ -17,7 +17,7 @@ public class LoginInterceptor implements HandlerInterceptor {
 
         HttpSession session = request.getSession();
 
-        User user = (User) session.getAttribute("user");
+        UserDTO user = (UserDTO) session.getAttribute("user");
 
         //用户不存在
         if(user==null){
@@ -25,11 +25,8 @@ public class LoginInterceptor implements HandlerInterceptor {
              return false;
         }
 
-        UserDTO userDTO = new UserDTO();
-        BeanUtils.copyProperties(user,userDTO);
-
         //存在
-        UserHolder.saveUser( userDTO);
+        UserHolder.saveUser(user);
 
         return true;
     }
