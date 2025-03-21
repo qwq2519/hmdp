@@ -53,7 +53,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         String code = RandomUtil.randomNumbers(6);
 
         //将手机号:验证码保存到redis
-        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY+"phone",code,LOGIN_CODE_TTL, TimeUnit.MINUTES);//set key value ex
+        stringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY+phone,code,LOGIN_CODE_TTL, TimeUnit.MINUTES);//set key value ex
 
 //        //将验证码和手机保存到session中
 //        session.setAttribute("code",code);
@@ -103,7 +103,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         Map<String,Object> userMap=BeanUtil.beanToMap(userDTO,new HashMap<>(),
                 CopyOptions.create()
                         .setIgnoreNullValue(true)
-                        .setFieldValueEditor((fieldName,fieldValue)->fieldValue.toString());
+                        .setFieldValueEditor((fieldName,fieldValue)->fieldValue.toString())
                 );
 
         String tokenKey=LOGIN_USER_KEY+token;
