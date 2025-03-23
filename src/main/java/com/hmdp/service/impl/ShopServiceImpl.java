@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * <p>
- *  服务实现类
+ * 服务实现类
  * </p>
  *
  * @author 虎哥
@@ -31,12 +31,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
-    private boolean tryLock(String key){
+    private boolean tryLock(String key) {
         Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
         return BooleanUtil.isTrue(flag);
     }
 
-    private void unLock(String key){
+    private void unLock(String key) {
         stringRedisTemplate.delete(key);
     }
 
@@ -48,43 +48,112 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         //互斥锁解决缓存击穿
 
         //逻辑过期解决缓存击穿
+        Shop shop = queryWithMutex(id);
+
+        if(shop==null){
+            return Result.fail("店铺不存在");
+        }
 
         return Result.ok(shop);
     }
+
+    //互斥锁解决缓存击穿
+    public Shop queryWithMutex(Long id) {
+        //从redis中查询
+        String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
+        String shopJson = stringRedisTemplate.opsForValue().get(redisKey);
+
+        //缓存命中，但是是空数据，是之前缓存的空字符串，表示是之前穿透过的
+        if (RedisConstants.CACHE_NULL_VALUE.equals(shopJson)) {
+            return null;
+        }
+
+        //缓存命中，且是有效数据
+        if (StrUtil.isNotBlank(shopJson)) {
+            return JSONUtil.toBean(shopJson, Shop.class);
+        }
+
+        //什么都没有命中，那就去数据库查找,实现缓存重构
+        Shop shop = null;
+        String lockKey = RedisConstants.LOCK_SHOP_KEY + id;
+
+        try {
+            //获取互斥锁，使用循环代替递归
+           while(true){
+               boolean getLock = tryLock(lockKey);
+                //获取失败，休眠重试
+               if (!getLock) {
+                   Thread.sleep(50);
+                   continue;
+               }
+               //二次检查缓存
+               shopJson = stringRedisTemplate.opsForValue().get(redisKey);
+               if (StrUtil.isNotBlank(shopJson)) {
+                   return JSONUtil.toBean(shopJson, Shop.class);
+               }
+
+               //查询数据库
+               shop = getById(id);
+
+               //为了压测，休眠，模拟一个长时间的缓存重建
+               Thread.sleep(200);
+
+               //数据库也没有
+               if (shop == null) {
+                   Long nullTTL = RedisConstants.CACHE_NULL_TTL + RandomUtil.randomInt(-1, 2);
+                   //缓存空对象
+                   stringRedisTemplate.opsForValue().set(redisKey, RedisConstants.CACHE_NULL_VALUE,
+                           nullTTL, TimeUnit.MINUTES);
+                   return null;
+               }
+               //写入redis
+               Long shopTTL = RedisConstants.CACHE_SHOP_TTL + RandomUtil.randomInt(-5, 5);
+               stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),
+                       shopTTL, TimeUnit.MINUTES);
+               return shop;
+           }
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            unLock(lockKey);
+        }
+
+    }
+
     //解决缓存穿透
     public Shop queryWithPassThrough(Long id) {
         //从redis中查询
         String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
         String shopJson = stringRedisTemplate.opsForValue().get(redisKey);
 
-        Shop shop = null;
 
         //缓存命中，但是是空数据，是之前缓存的空字符串，表示是之前穿透过的
-        if(RedisConstants.CACHE_NULL_VALUE.equals(shopJson)){
+        if (RedisConstants.CACHE_NULL_VALUE.equals(shopJson)) {
             return null;
         }
 
         //缓存命中，且是有效数据
         if (StrUtil.isNotBlank(shopJson)) {
-            shop = JSONUtil.toBean(shopJson, Shop.class);
-            return shop;
+            return JSONUtil.toBean(shopJson, Shop.class);
         }
 
         //什么都没有命中，那就去数据库查找
         //redis没有缓存，那就去数据库查找
+        Shop shop = null;
+
         shop = getById(id);
 
         //数据库也没有
         if (shop == null) {
-            Long nullTTL=RedisConstants.CACHE_NULL_TTL+ RandomUtil.randomInt(-1,2);
+            Long nullTTL = RedisConstants.CACHE_NULL_TTL + RandomUtil.randomInt(-1, 2);
             //缓存空对象
-            stringRedisTemplate.opsForValue().set(redisKey,RedisConstants.CACHE_NULL_VALUE,
-                    nullTTL , TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(redisKey, RedisConstants.CACHE_NULL_VALUE,
+                    nullTTL, TimeUnit.MINUTES);
             return null;
         }
-        Long shopTTL=RedisConstants.CACHE_SHOP_TTL+RandomUtil.randomInt(-5,5);
+        Long shopTTL = RedisConstants.CACHE_SHOP_TTL + RandomUtil.randomInt(-5, 5);
         stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),
-                shopTTL , TimeUnit.MINUTES);
+                shopTTL, TimeUnit.MINUTES);
 
         return shop;
     }
@@ -94,7 +163,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Override
     public Result update(Shop shop) {
         Long id = shop.getId();
-        if(id==null){
+        if (id == null) {
             return Result.fail("id不能为空");
         }
 
