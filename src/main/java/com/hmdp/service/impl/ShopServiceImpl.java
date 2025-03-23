@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
@@ -54,13 +55,16 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         //数据库也没有
         if (shop == null) {
+            Long nullTTL=RedisConstants.CACHE_NULL_TTL+ RandomUtil.randomInt(-1,2);
             //缓存空对象
-            stringRedisTemplate.opsForValue().set(redisKey, RedisConstants.CACHE_NULL_VALUE,RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+            stringRedisTemplate.opsForValue().set(redisKey,RedisConstants.CACHE_NULL_VALUE,
+                    nullTTL , TimeUnit.MINUTES);
 
             return Result.fail("店铺不存在");
         }
-
-        stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),RedisConstants.CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        Long shopTTL=RedisConstants.CACHE_SHOP_TTL+RandomUtil.randomInt(-5,5);
+        stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),
+               shopTTL , TimeUnit.MINUTES);
 
         return Result.ok(shop);
     }
