@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
@@ -30,8 +31,28 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
+    private boolean tryLock(String key){
+        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
+        return BooleanUtil.isTrue(flag);
+    }
+
+    private void unLock(String key){
+        stringRedisTemplate.delete(key);
+    }
+
     @Override
     public Result queryById(Long id) {
+//        缓存穿透
+//      Shop shop=queryWithPassThrough(id);
+
+        //互斥锁解决缓存击穿
+
+        //逻辑过期解决缓存击穿
+
+        return Result.ok(shop);
+    }
+    //解决缓存穿透
+    public Shop queryWithPassThrough(Long id) {
         //从redis中查询
         String redisKey = RedisConstants.CACHE_SHOP_KEY + id;
         String shopJson = stringRedisTemplate.opsForValue().get(redisKey);
@@ -40,13 +61,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         //缓存命中，但是是空数据，是之前缓存的空字符串，表示是之前穿透过的
         if(RedisConstants.CACHE_NULL_VALUE.equals(shopJson)){
-            return Result.fail("店铺不存在");
+            return null;
         }
 
         //缓存命中，且是有效数据
         if (StrUtil.isNotBlank(shopJson)) {
             shop = JSONUtil.toBean(shopJson, Shop.class);
-            return Result.ok(shop);
+            return shop;
         }
 
         //什么都没有命中，那就去数据库查找
@@ -59,15 +80,15 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
             //缓存空对象
             stringRedisTemplate.opsForValue().set(redisKey,RedisConstants.CACHE_NULL_VALUE,
                     nullTTL , TimeUnit.MINUTES);
-
-            return Result.fail("店铺不存在");
+            return null;
         }
         Long shopTTL=RedisConstants.CACHE_SHOP_TTL+RandomUtil.randomInt(-5,5);
         stringRedisTemplate.opsForValue().set(redisKey, JSONUtil.toJsonStr(shop),
-               shopTTL , TimeUnit.MINUTES);
+                shopTTL , TimeUnit.MINUTES);
 
-        return Result.ok(shop);
+        return shop;
     }
+
 
     @Transactional
     @Override
