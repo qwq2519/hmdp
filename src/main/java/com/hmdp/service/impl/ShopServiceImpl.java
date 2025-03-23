@@ -37,16 +37,26 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
         Shop shop = null;
 
+        //缓存命中，但是是空数据，是之前缓存的空字符串，表示是之前穿透过的
+        if(RedisConstants.CACHE_NULL_VALUE.equals(shopJson)){
+            return Result.fail("店铺不存在");
+        }
+
+        //缓存命中，且是有效数据
         if (StrUtil.isNotBlank(shopJson)) {
             shop = JSONUtil.toBean(shopJson, Shop.class);
             return Result.ok(shop);
         }
 
+        //什么都没有命中，那就去数据库查找
         //redis没有缓存，那就去数据库查找
         shop = getById(id);
 
         //数据库也没有
         if (shop == null) {
+            //缓存空对象
+            stringRedisTemplate.opsForValue().set(redisKey, RedisConstants.CACHE_NULL_VALUE,RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+
             return Result.fail("店铺不存在");
         }
 
