@@ -9,6 +9,8 @@ import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ import java.time.LocalDateTime;
  * @since 2021-12-22
  */
 @Service
+@Slf4j
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
     @Autowired
@@ -32,7 +35,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Autowired
     private RedisIdWorker redisIdWorker;
 
-    @Transactional
     @Override
     public Result seckillVoucher(Long voucherId) {
         //查询优惠券
@@ -52,42 +54,57 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (voucher.getStock() <= 0) {
             return Result.fail("库存不足！");
         }
+        Long userId=UserHolder.getUser().getId();
+        //为什么在这里加锁？
+        //下面的方法需要事务管理，因此为了线程安全，还是要给整个方法加锁，不然同步块结束可能spring事务还没提交，导致并发安全问题
+        synchronized (userId.toString().intern()) {//返回字符串在常量池（String Pool） 中的唯一引用。
+//            这里是spring事务失效的几种场景
+//            return this.createVoucherOrder(voucherId);
+            //我们需要拿到spring的代理对象，调用它的方法才行
+            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+            return proxy.createVoucherOrder(voucherId);
+        }
+    }
 
+    @Transactional
+    @Override
+    public Result createVoucherOrder(Long voucherId) {
         //一人一单逻辑
         Long userId = UserHolder.getUser().getId();
-        int count = this.query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-        if (count > 0) {
-            //抢过优惠券了
-            return Result.fail("用户已经购买过一次！");
-        }
 
-        //减少库存 这是两种乐观锁的实现
-        //下面这种乐观锁实现方式效率比较差，虽然安全，但是会导致卖出的券很少，因为卖出的概率很低
+            int count = this.query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+            if (count > 0) {
+                //抢过优惠券了
+                return Result.fail("用户已经购买过一次！");
+            }
+
+            //减少库存 这是两种乐观锁的实现
+            //下面这种乐观锁实现方式效率比较差，虽然安全，但是会导致卖出的券很少，因为卖出的概率很低
 //        boolean success = seckillVoucherService.update()
 //                .setSql("stock = stock -1")
 //                .eq("voucher_id", voucherId).eq("stock",voucher.getStock()).update();
-        //大于0就可以卖
-        boolean success = seckillVoucherService.update()
-                .setSql("stock = stock -1")
-                .eq("voucher_id", voucherId).gt("stock", 0).update();
+            //大于0就可以卖
+            boolean success = seckillVoucherService.update()
+                    .setSql("stock = stock -1")
+                    .eq("voucher_id", voucherId).gt("stock", 0).update();
 
 
-        if (!success) {
-            return Result.fail("库存不足！");
-        }
+            if (!success) {
+                return Result.fail("库存不足！");
+            }
 
-        //生成优惠券订单
+            //生成优惠券订单
 
-        long orderId = redisIdWorker.nextId("order");
+            long orderId = redisIdWorker.nextId("order");
+            VoucherOrder voucherOrder = VoucherOrder.builder()
+                    .id(orderId)
+                    .userId(userId)
+                    .voucherId(voucherId)
+                    .build();
 
-        VoucherOrder voucherOrder = VoucherOrder.builder()
-                .id(orderId)
-                .userId(userId)
-                .voucherId(voucherId)
-                .build();
+            this.save(voucherOrder);
 
-        this.save(voucherOrder);
+            return Result.ok(orderId);
 
-        return Result.ok(orderId);
     }
 }
