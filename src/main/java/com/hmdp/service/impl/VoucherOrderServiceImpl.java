@@ -8,10 +8,12 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.utils.RedisIdWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +37,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Autowired
     private RedisIdWorker redisIdWorker;
 
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
+
     @Override
     public Result seckillVoucher(Long voucherId) {
         //查询优惠券
@@ -54,7 +59,28 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (voucher.getStock() <= 0) {
             return Result.fail("库存不足！");
         }
+
         Long userId=UserHolder.getUser().getId();
+
+        //创建锁对象
+        SimpleRedisLock lock=new SimpleRedisLock("order:"+userId,stringRedisTemplate);
+
+        //尝试加锁
+        boolean isLock= lock.tryLock(10);
+
+        if(!isLock){
+            return Result.fail("不允许重复下单");
+        }else{
+            try {
+                //获取代理对象（事务)
+                IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+                return proxy.createVoucherOrder(voucherId);
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        /**
         //为什么在这里加锁？
         //下面的方法需要事务管理，因此为了线程安全，还是要给整个方法加锁，不然同步块结束可能spring事务还没提交，导致并发安全问题
         synchronized (userId.toString().intern()) {//返回字符串在常量池（String Pool） 中的唯一引用。
@@ -63,7 +89,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             //我们需要拿到spring的代理对象，调用它的方法才行
             IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
             return proxy.createVoucherOrder(voucherId);
-        }
+        }*/
+
     }
 
     @Transactional
