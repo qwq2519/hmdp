@@ -31,6 +31,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Autowired
     private RedisIdWorker redisIdWorker;
+
     @Transactional
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -52,18 +53,26 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足！");
         }
 
-        //减少库存
+        //一人一单逻辑
+        Long userId = UserHolder.getUser().getId();
+        int count = this.query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+        if (count > 0) {
+            //抢过优惠券了
+            return Result.fail("用户已经购买过一次！");
+        }
+
+        //减少库存 这是两种乐观锁的实现
         //下面这种乐观锁实现方式效率比较差，虽然安全，但是会导致卖出的券很少，因为卖出的概率很低
 //        boolean success = seckillVoucherService.update()
 //                .setSql("stock = stock -1")
 //                .eq("voucher_id", voucherId).eq("stock",voucher.getStock()).update();
-
         //大于0就可以卖
         boolean success = seckillVoucherService.update()
                 .setSql("stock = stock -1")
-                .eq("voucher_id", voucherId).gt("stock",0).update();
+                .eq("voucher_id", voucherId).gt("stock", 0).update();
 
-        if(!success){
+
+        if (!success) {
             return Result.fail("库存不足！");
         }
 
@@ -73,7 +82,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         VoucherOrder voucherOrder = VoucherOrder.builder()
                 .id(orderId)
-                .userId(UserHolder.getUser().getId())
+                .userId(userId)
                 .voucherId(voucherId)
                 .build();
 
