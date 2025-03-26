@@ -2,7 +2,7 @@ server:
   port: 8081
   tomcat:
     threads:
-      max: 1000
+      max: 1500
 spring:
   application:
     name: hmdp
