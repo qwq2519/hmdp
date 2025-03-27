@@ -30,7 +30,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private CacheClient cacheClient;
 
 
-
     @Override
     public Result queryById(Long id) {
 //        缓存穿透

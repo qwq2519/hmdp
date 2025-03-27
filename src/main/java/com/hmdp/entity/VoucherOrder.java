@@ -11,19 +11,11 @@ import lombok.experimental.Accessors;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
-/**
- * <p>
- *
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
- */
+
 @Data
 @EqualsAndHashCode(callSuper = false)
 @Accessors(chain = true)
 @TableName("tb_voucher_order")
-@Builder
 public class VoucherOrder implements Serializable {
 
     private static final long serialVersionUID = 1L;
