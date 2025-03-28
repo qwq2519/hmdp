@@ -13,28 +13,21 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
-/**
- * <p>
- * 前端控制器
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
- */
+
 @Slf4j
 @RestController
 @RequestMapping("/user")
 public class UserController {
 
-    @Resource
+    @Autowired
     private IUserService userService;
 
-    @Resource
+    @Autowired
     private IUserInfoService userInfoService;
 
     /**
